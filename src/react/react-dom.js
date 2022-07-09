@@ -43,7 +43,9 @@ export function renderDom(element) {
   if (typeof type === 'string') {
     // 常规 dom 节点的渲染
     dom = document.createElement(type)
-  // } else if (typeof type === 'function') {
+  } else if (typeof type === 'function') {
+    dom = document.createDocumentFragment()
+
   //   // React组件的渲染
   //   if (type.prototype.isReactComponent) {
   //     // 类组件

@@ -1,4 +1,5 @@
 import { renderDom } from './react-dom'
+import { commitRoot } from './commit'
 
 let rootFiber
 let nextUnitOfWork
@@ -33,6 +34,11 @@ function workLoop(deadline) {
     performUnitOfWork(nextUnitOfWork)
     sholdYield = deadline.timeRemaining() < 1
   }
+  // 进入commit渲染
+  if (!nextUnitOfWork && rootFiber) {
+    commitRoot(rootFiber)
+    rootFiber = null //? TODO
+  }
   requestIdleCallback(workLoop)
 }
 
@@ -46,13 +52,13 @@ function performUnitOfWork(workInProgress) {
   if (!workInProgress.stateNode) {
     workInProgress.stateNode = renderDom(element) // 若当前 fiber 没有 stateNode, 即对应的元生DOM，则根据 fiber 挂载的 element 的属性创建
   }
-  if (workInProgress.return && workInProgress.stateNode) {  // renderDom返回值也可能还是null, 所以判断workInProgress.stateNode不为空
-    let parentFiber = workInProgress.return
-    while (!parentFiber.stateNode) { // 条件渲染时,当条件为false,stateNode为空
-      parentFiber = parentFiber.return
-    }
-    parentFiber.stateNode.appendChild(workInProgress.stateNode) // 挂载到父DOM节点下
-  }
+  // if (workInProgress.return && workInProgress.stateNode) {  // renderDom返回值也可能还是null, 所以判断workInProgress.stateNode不为空
+  //   let parentFiber = workInProgress.return
+  //   while (!parentFiber.stateNode) { // 条件渲染时,当条件为false,stateNode为空
+  //     parentFiber = parentFiber.return
+  //   }
+  //   parentFiber.stateNode.appendChild(workInProgress.stateNode) // 挂载到父DOM节点下
+  // }
 
   // 2. 构建fiber树: 根据 React.element 去创建对应的 fiber，并通过 child、 sibling 和 return 这几个字段的形成 fiber 树
   // 当 React.element 的 type 属性是 function 时，表示 react 组件，我们将其渲染后所得到的 jsx 作为 children 处理。
@@ -75,7 +81,7 @@ function performUnitOfWork(workInProgress) {
     }
   }
 
-  if (children) {
+  if (children || children === 0) { // ? TODO
     let elements = Array.isArray(children) ? children : [children]
     elements = elements.flat()
     let index = 0
