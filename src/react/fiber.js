@@ -1,8 +1,22 @@
 import { renderDom } from './react-dom'
 import { commitRoot } from './commit'
+import { reconcileChildren } from './reconciler'
 
-let rootFiber
-let nextUnitOfWork
+let workInProgressRoot = null
+let nextUnitOfWork = null
+let currentRoot = null
+
+let deletions = [] // 要执行删除 dom 的 fiber
+
+// 将某个 fiber 加入 deletions 数组
+export function deleteFiber(fiber) {
+  deletions.push(fiber)
+}
+
+// 获取 deletions 数组
+export function getDeletions() {
+  return deletions
+}
 
 /**
  * 创建fiberRoot
@@ -10,36 +24,17 @@ let nextUnitOfWork
  * @param container
  */
 export function createRoot(element, container) {
-  rootFiber = {
+  workInProgressRoot = {
     stateNode: container,
     element: {
       props: {
         children: [element]
       }
-    }
+    },
+    alternate: currentRoot
   }
-  // 创建rootFiber赋值给下一个执行单元, 赋值后workLoop会自动执行
-  nextUnitOfWork = rootFiber
-}
-
-
-/**
- * 调度任务, 当浏览器有空闲时执行
- * @param deadline
- */
-function workLoop(deadline) {
-  let sholdYield = false
-  while (nextUnitOfWork && !sholdYield) {
-    // 执行单个任务
-    performUnitOfWork(nextUnitOfWork)
-    sholdYield = deadline.timeRemaining() < 1
-  }
-  // 进入commit渲染
-  if (!nextUnitOfWork && rootFiber) {
-    commitRoot(rootFiber)
-    rootFiber = null //? TODO
-  }
-  requestIdleCallback(workLoop)
+  // 创建workInProgressRoot赋值给下一个执行单元, 赋值后workLoop会自动执行
+  nextUnitOfWork = workInProgressRoot
 }
 
 /**
@@ -84,43 +79,51 @@ function performUnitOfWork(workInProgress) {
   if (children || children === 0) { // ? TODO
     let elements = Array.isArray(children) ? children : [children]
     elements = elements.flat()
-    let index = 0
-    let preSibling = null
-    while (index < elements.length) {
-      const element = elements[index]
-      // 创建新的 fiber
-      const newFiber = {
-        element,
-        return: workInProgress,
-        stateNode: null
-      }
-      // 第一个元素作为上一级fiber的child, 其他作为上一个fiber的sibling
-      if (index === 0) {
-        workInProgress.child = newFiber
-      } else {
-        preSibling.sibling = newFiber
-      }
-      preSibling = newFiber
-      index++
-    }
+    // reconcile创建fiber树
+    reconcileChildren(workInProgress, elements)
   }
 
   // 3. 返回下一个工作单元
   if (workInProgress.child) {
     nextUnitOfWork = workInProgress.child // 如果有子 fiber，则下一个工作单元是子 fiber
   } else {
-    let newFiber = workInProgress
-    while (newFiber) {
-      if (newFiber.sibling) {
-        nextUnitOfWork = newFiber.sibling // 没有子 fiber 有兄弟 fiber，则下一个工作单元是兄弟 fiber
+    let nextFiber = workInProgress
+    while (nextFiber) {
+      if (nextFiber.sibling) {
+        nextUnitOfWork = nextFiber.sibling // 没有子 fiber 有兄弟 fiber，则下一个工作单元是兄弟 fiber
+        return
       } else {
-        nextUnitOfWork = newFiber.return // 子 fiber 和兄弟 fiber 都没有，深度优先遍历返回上一层
+        nextFiber = nextFiber.return // 子 fiber 和兄弟 fiber 都没有，深度优先遍历返回上一层
       }
     }
-    if (!newFiber) // 若返回最顶层，表示迭代结束，将 nextUnitOfWork 置空
+    if (!nextFiber) // 若返回最顶层，表示迭代结束，将 nextUnitOfWork 置空
       nextUnitOfWork = null
   }
 }
+
+
+/**
+ * 调度任务, 当浏览器有空闲时执行
+ * @param deadline
+ */
+function workLoop(deadline) {
+  let sholdYield = false
+  while (nextUnitOfWork && !sholdYield) {
+    // 执行单个任务
+    performUnitOfWork(nextUnitOfWork)
+    sholdYield = deadline.timeRemaining() < 1
+  }
+  // 进入commit渲染
+  if (!nextUnitOfWork && workInProgressRoot) {
+    commitRoot(workInProgressRoot)
+    // 交换工作fiber树和已渲染fiber树指向
+    currentRoot = workInProgressRoot
+    workInProgressRoot = null
+    deletions = []
+  }
+  requestIdleCallback(workLoop)
+}
+
 
 
 // 启动起来
