@@ -21,8 +21,8 @@ export function reconcileChildren(workInProgress, elements) {
           ...element,
           props: element.props
         },
+        stateNode: oldFiber.stateNode,
         return: workInProgress,
-        stateNode: null,
         alternate: oldFiber,
         flag: 'Update'
       }
@@ -53,7 +53,8 @@ export function reconcileChildren(workInProgress, elements) {
     if (index === 0) {
       workInProgress.child = newFiber
       preSibling = newFiber
-    } else {
+    } else if (newFiber) {
+      // newFiber 和 prevSibling 存在，通过 sibling 作为兄弟 fiber 连接
       if (preSibling)
         preSibling.sibling = newFiber
       preSibling = newFiber
