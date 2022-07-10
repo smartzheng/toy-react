@@ -8,6 +8,19 @@ let currentRoot = null
 
 let deletions = [] // 要执行删除 dom 的 fiber
 
+let currentFunctionFiber = null; // 当前正在执行的函数组件对应 fiber
+let hookIndex = 0; //  当前正在执行的函数组件 hook 的下标
+
+// 获取当前的执行的函数组件对应的 fiber
+export function getCurrentFunctionFiber() {
+  return currentFunctionFiber;
+}
+
+// 获取当前 hook 下标
+export function getHookIndex() {
+  return hookIndex++;
+}
+
 // 将某个 fiber 加入 deletions 数组
 export function deleteFiber(fiber) {
   deletions.push(fiber)
@@ -35,6 +48,35 @@ export function createRoot(element, container) {
   }
   // 创建workInProgressRoot赋值给下一个执行单元, 赋值后workLoop会自动执行
   nextUnitOfWork = workInProgressRoot
+}
+
+function updateClassComponent(fiber) {
+  let jsx
+  const { alternate, element } = fiber
+  const { type: Comp, props } = element
+
+  if (alternate) {
+    const component = alternate.component
+    fiber.component = component
+    component._updateProps(props)
+    jsx = component.render()
+  } else {
+    const component = new Comp(props)
+    fiber.component = component
+    jsx = component.render()
+  }
+
+  reconcileChildren(fiber, [jsx])
+}
+
+function updateFunctionComponent(fiber) {
+  currentFunctionFiber = fiber
+  hookIndex = 0
+  currentFunctionFiber.hooks = []
+
+  const { type: Fn, props } = fiber.element
+  let jsx = Fn(props)
+  reconcileChildren(fiber, [jsx])
 }
 
 /**
@@ -65,14 +107,9 @@ function performUnitOfWork(workInProgress) {
   // react组件
   if (typeof type === 'function') {
     if (type.prototype.isReactComponent) {
-      const { type: Comp, props } = element
-      const component = new Comp(props)
-      let jsx = component.render()
-      children = [jsx]
+      updateClassComponent(workInProgress)
     } else {
-      const { type: Fn, props } = element
-      let jsx = Fn(props)
-      children = [jsx]
+      updateFunctionComponent(workInProgress)
     }
   }
 
@@ -124,6 +161,17 @@ function workLoop(deadline) {
   requestIdleCallback(workLoop)
 }
 
+/**
+ * 提交更新渲染
+ */
+export function commitRender() {
+  workInProgressRoot = {
+    stateNode: currentRoot.stateNode,
+    element: currentRoot.element,
+    alternate: currentRoot
+  }
+  nextUnitOfWork = workInProgressRoot
+}
 
 
 // 启动起来
